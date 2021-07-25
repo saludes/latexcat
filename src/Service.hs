@@ -7,6 +7,9 @@ import Control.Monad.IO.Class
 import Data.Aeson.Types
 import qualified Data.ByteString as BS
 import qualified Data.Char as C
+import Data.Text.Lazy.Builder (toLazyText)
+import Data.Text.Lazy (toStrict)
+import HTMLEntities.Decoder (htmlEncodedText)
 -- import Debug.Trace
 
 
@@ -62,7 +65,7 @@ translate config src_text =
             resp <- getTranslation config text
             case parse parseResponse resp of 
                 Success txt -> do
-                    let nw = Ck (pre,txt,suff)
+                    let nw = Ck (pre, htmlDecode txt,suff)
                     pure $ unstrip nw 
                 Error err -> fail err 
     where Ck (pre,text,suff) = strip src_text
@@ -78,4 +81,10 @@ strip txt =
             (rsuffix, rchunk) = b $ r chunk
         in Ck (prefix, r rchunk, r rsuffix)
 
+
+
 unstrip (Ck (pre,chunk,suf)) = pre <> chunk <> suf
+
+
+htmlDecode :: Text -> Text
+htmlDecode = toStrict . toLazyText . htmlEncodedText

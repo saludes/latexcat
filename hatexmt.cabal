@@ -36,6 +36,7 @@ library
       aeson >=1.5
     , base >=4.7 && <5
     , bytestring
+    , html-entities
     , req >=3.9
     , text >=1.2
   default-language: Haskell2010

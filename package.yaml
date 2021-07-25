@@ -29,6 +29,7 @@ library:
     - aeson >= 1.5
     - bytestring
     - text >= 1.2
+    - html-entities
   default-extensions:
     - OverloadedStrings
 

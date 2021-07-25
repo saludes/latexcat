@@ -8,7 +8,7 @@ import qualified Service as MT
 import Data.Functor ((<&>))
 
 --import Debug.Trace
---import Data.Char (isSpace)
+import Data.Char (isSpace)
 
 
 count :: String -> Text -> Text
@@ -37,18 +37,16 @@ main = case parseLaTeX example of
   Right l  -> do
     putStrLn "Printing LaTeX AST..."
     print l
-    -- putStrLn "Checking that (render . parse == id)..."
     let cfg = MT.makeConfig "en" "es" 
     lt <- translate cfg l
     let t = render lt
-     -- print $ example == t
     putStrLn "\n"
     --for_ (T.lines t) (T.putStr . reveal)
     T.putStr  t
 
 reveal :: Text -> Text
 reveal "" = "=\n"
-reveal t = t -- T.map (\c -> if isSpace c then '*' else c) t
+reveal t = T.map (\c -> if isSpace c then '*' else c) t
 
 example :: Text
 example = T.unlines
@@ -60,6 +58,7 @@ example = T.unlines
   , "\\maketitle"
   , "% Here comes the document"
   , "This is an example of how to parse LaTeX using the"
-  , "\\HaTeX library."
+  , "\\HaTeX library with inline $x+3$ and"
+  , "displayed math $$\\int_1^1\\frac{dx}{x}.$$"
   , "\\end{document}"
     ]
