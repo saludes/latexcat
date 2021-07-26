@@ -1,4 +1,10 @@
-module Service (makeMT, MTService, query, User) where
+module Service (
+    makeMT, 
+    MTService,
+    makeLangPair,
+    query,
+    User,
+    ISOLang, LangPair) where
 
 import Network.HTTP.Req
 import Data.Aeson

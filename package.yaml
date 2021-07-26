@@ -19,19 +19,23 @@ extra-source-files:
 # common to point users to the README.md file.
 description:         Please see the README on GitHub at <https://github.com/githubuser/hatexmt#readme>
 
+default-extensions:
+    - OverloadedStrings
+    - BlockArguments
+
 dependencies:
 - base >= 4.7 && < 5
 
 library:
   source-dirs: src
   dependencies:
-    -  req >= 3.9
+    - req >= 3.9
     - aeson >= 1.5
+    - HaTeX
     - bytestring
     - text >= 1.2
     - html-entities
-  default-extensions:
-    - OverloadedStrings
+  
 
 executables:
   hatexmt-exe:
@@ -62,3 +66,6 @@ tests:
     - -with-rtsopts=-N
     dependencies:
     - hatexmt
+    - filepath
+    - text >= 1.2
+    - hspec
