@@ -1,9 +1,10 @@
-module Service where
+module Service (makeMT, MTService, query, User) where
 
 import Network.HTTP.Req
 import Data.Aeson
-import Data.Text hiding (strip)
+import Data.Text hiding (strip, length, all)
 import Control.Monad.IO.Class
+import Data.Maybe (maybe)
 import Data.Aeson.Types
 import qualified Data.ByteString as BS
 import qualified Data.Char as C
@@ -13,25 +14,31 @@ import HTMLEntities.Decoder (htmlEncodedText)
 -- import Debug.Trace
 
 
+type ISOLang = String
+type LangPair = (ISOLang, ISOLang)
 
-type LangPair = (String, String)
 type User = String
 newtype Chunk = Ck (Text, Text, Text)
     deriving Show
 
 type TranslationResult = Either String Text
 
-data Config = Cfg
+data MTService = MT
     { user :: Maybe User
-    , pair :: LangPair }
+    , pair :: LangPair
+    , query :: Text -> IO Text
+    }
 
-makeConfig :: String -> String -> Config
-makeUserConfig :: User -> String -> String -> Config
-makeConfig src dst = Cfg Nothing (src,dst)
-makeUserConfig user src dst = Cfg (Just user) (src,dst)
+makeMT :: Maybe User -> String -> String -> MTService
+makeMT muser src dst = MT 
+    { user = muser
+    , pair = pair
+    , query = _translate muser pair
+    }
+    where Just pair = makeLangPair src dst
 
-getTranslation :: Config -> Text -> IO Value
-getTranslation config src_text = 
+getTranslation :: Maybe User -> LangPair -> Text -> IO Value
+getTranslation muser langs src_text = 
     runReq defaultHttpConfig $ do
         r <- req
                 GET
@@ -40,13 +47,11 @@ getTranslation config src_text =
                 jsonResponse params'
         return (responseBody r :: Value)
     where
-        (src,dst) = pair config
+        (src,dst) = langs
         params = 
             "q" =: src_text <>
             "langpair" =: (src ++ "|" ++ dst :: String)
-        params' = case user config of
-            Just user -> params <> "de" =: user
-            Nothing   -> params
+        params' = maybe params (\user -> params <> "de" =: user) muser
         url = "api.mymemory.translated.net"
 
 parseResponse :: Value -> Parser Text
@@ -57,12 +62,12 @@ parseResponse = withObject "response" $ \o -> do
     then do withObject "data" (.: "translatedText") rdata
     else fail $ "Failed, Reason: " ++ show status
 
-translate :: Config -> Text -> IO Text
-translate config src_text = 
+_translate :: Maybe User -> LangPair -> Text -> IO Text
+_translate muser pair src_text = 
     if Data.Text.null text
         then pure src_text
         else do
-            resp <- getTranslation config text
+            resp <- getTranslation muser pair text
             case parse parseResponse resp of 
                 Success txt -> do
                     let nw = Ck (pre, htmlDecode txt,suff)
@@ -88,3 +93,9 @@ unstrip (Ck (pre,chunk,suf)) = pre <> chunk <> suf
 
 htmlDecode :: Text -> Text
 htmlDecode = toStrict . toLazyText . htmlEncodedText
+
+makeLangPair :: String -> String -> Maybe LangPair 
+makeLangPair src dst | isISOLang src && isISOLang dst = Just (src,dst)
+                     | otherwise  = Nothing
+        where 
+            isISOLang l = length l == 2 && all C.isLower l && all C.isLetter l

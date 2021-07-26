@@ -4,8 +4,9 @@ import Text.LaTeX.Base.Parser
 import Data.Foldable (for_)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
-import qualified Service as MT
+import Service
 import Data.Functor ((<&>))
+import System.Environment (lookupEnv)
 
 --import Debug.Trace
 import Data.Char (isSpace)
@@ -16,11 +17,16 @@ count suffix text = T.pack $ "<" ++ show nwords ++ " words " ++ suffix ++ ">\n"
   where nwords = length $ T.words text
 
 
-translate :: MT.Config -> LaTeX -> IO LaTeX
-translate config l = tr l 
+getUser :: IO (Maybe User)
+getUser = lookupEnv "MT_USER"
+
+
+translate :: MTService -> LaTeX -> IO LaTeX
+translate service l = tr l 
   where
+    q = query service
     tr l = case l of
-      S.TeXRaw text     -> MT.translate config text <&> S.TeXRaw
+      S.TeXRaw text       -> q text <&> S.TeXRaw
       S.TeXComment text   -> pure $ S.TeXComment text
       S.TeXSeq l1 l2      -> do
           d1 <- tr l1
@@ -37,10 +43,12 @@ main = case parseLaTeX example of
   Right l  -> do
     putStrLn "Printing LaTeX AST..."
     print l
-    let cfg = MT.makeConfig "en" "es" 
-    lt <- translate cfg l
+    muser <- getUser
+    putStrLn $ "\nUser is: " <> show muser
+    let mt = makeMT muser "en" "es" 
+    lt <- translate mt l
     let t = render lt
-    putStrLn "\n"
+    putStrLn ""
     --for_ (T.lines t) (T.putStr . reveal)
     T.putStr  t
 
@@ -59,6 +67,6 @@ example = T.unlines
   , "% Here comes the document"
   , "This is an example of how to parse LaTeX using the"
   , "\\HaTeX library with inline $x+3$ and"
-  , "displayed math $$\\int_1^1\\frac{dx}{x}.$$"
+  , "displayed math $$\\ln 2 = \\int_1^2\\frac{dx}{x}.$$"
   , "\\end{document}"
     ]
