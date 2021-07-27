@@ -22,8 +22,7 @@ main = hspec do
                     return (lines dst', lines dst)
             trans_text `shouldBe` dst_text
 
-data Sample = Sample [(ISOLang, Text)]
-
+newtype Sample = Sample [(ISOLang, Text)]
 
 
 getSampleFor :: LangPair -> Int -> IO Sample
