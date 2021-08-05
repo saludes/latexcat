@@ -4,22 +4,23 @@ import qualified Data.Text as T
 import qualified Data.Text.IO as IOT
 import System.Console.GetOpt
 import Service
+import Data.Maybe (fromMaybe)
 import System.Environment (lookupEnv, getArgs)
 import Data.Char (isSpace)
 
   
 
 data Options = Options
-  { optLangs :: LangPair 
-  , optSuffix :: String
-  , optUser :: Maybe User
-  , optFiles :: [FilePath ]
+  { optLangs  :: LangPair 
+  , optSuffix :: Maybe String
+  , optUser   :: Maybe User
+  , optFiles  :: [FilePath ]
   }
 
 defaultOptions :: Options
 defaultOptions = Options
-  { optLangs = ("es","ca")
-  , optSuffix = ".out"
+  { optLangs = ("","")
+  , optSuffix = Nothing 
   , optUser = Nothing 
   , optFiles = []
   }
@@ -37,7 +38,7 @@ options =
         in ops { optLangs = (f,t)}) "LANG")
       "in ISO 2-char form" 
   , Option ['o'] ["out-suffix"]
-      (OptArg (\ms ops -> return $ maybe ops (\s -> ops { optSuffix = s}) ms) "EXT")
+      (OptArg (\ms ops -> return $ ops { optSuffix = ms}) "EXT")
       "Suffix for output files"
   , Option ['u'] ["user"]
       (OptArg (\mu ops -> 
@@ -51,14 +52,16 @@ options =
   ]
       
 
-translateFile :: MTService -> String -> FilePath -> IO ()
+translateFile :: MTService -> Maybe String -> FilePath -> IO ()
 translateFile mt ext path = do
   contents <- IOT.readFile path
   translation <- latexTranslate mt contents
-  let outPath = path ++ ext
+  let outPath = path ++ "." ++ getExt ext
   IOT.writeFile outPath translation
   putStrLn $ "Translated into " ++ outPath
-
+    where
+      getExt = fromMaybe (snd $ pair mt)
+      
 
 getUser :: IO (Maybe User)
 getUser = lookupEnv "MT_USER"
@@ -70,10 +73,13 @@ main = do
   if null errors
     then do
       opts <- foldl (>>=) (return defaultOptions) actions
-      let (lin,lout) = optLangs opts
-          mt = makeMT (optUser opts)  lin lout
-          ext = optSuffix opts
-      mapM_ (translateFile mt ext) nonOptions
+      case optLangs opts of
+        ("",_)     -> ioError (userError "Must specify 'from' LANG")
+        (_,"")     -> ioError (userError "Must specify 'to LANG")
+        (lin,lout) -> do
+            let mt = makeMT (optUser opts)  lin lout
+                ext = optSuffix opts
+            mapM_ (translateFile mt ext) nonOptions
     else ioError (userError $ concat errors ++ usageInfo header options)
   where header = "Usage: ? -f LANG -t LANG [OPTION..] files..."
   

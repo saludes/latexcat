@@ -2,7 +2,7 @@ module Service (
     makeMT, 
     MTService,
     makeLangPair,
-    query,
+    query, pair,
     User,
     ISOLang, LangPair) where
 
@@ -34,6 +34,10 @@ data MTService = MT
     , pair :: LangPair
     , query :: Text -> IO Text
     }
+
+instance Show MTService where
+    show (MT user (l0,l1) _) = maybe s (\u -> s ++ " for " ++ u) user ++ ")"
+        where s = "(MT service " ++ l0 ++ ">" ++ l1 
 
 makeMT :: Maybe User -> String -> String -> MTService
 makeMT muser src dst = MT 
