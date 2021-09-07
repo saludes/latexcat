@@ -1,4 +1,4 @@
-module Translation where
+module LaTeXTranslation where
 import Service
 import Text.LaTeX.Base.Parser
 import Text.LaTeX hiding (words)

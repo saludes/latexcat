@@ -1,6 +1,6 @@
 import Test.Hspec
 import Service
-import Translation
+import LaTeXTranslation
 import System.FilePath.Posix
 import qualified Data.Text.IO as IOT
 import Data.Text

@@ -1,4 +1,4 @@
-import Translation (latexTranslate)
+import LaTeXTranslation (latexTranslate)
 import Data.Foldable (for_)
 import qualified Data.Text as T
 import qualified Data.Text.IO as IOT
