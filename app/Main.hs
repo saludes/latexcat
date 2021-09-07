@@ -1,4 +1,5 @@
 import LaTeXTranslation (latexTranslate)
+import XmlTranslation (xmlTranslate, decodeHTML)
 import Data.Foldable (for_)
 import qualified Data.Text as T
 import qualified Data.Text.IO as IOT
@@ -6,13 +7,13 @@ import System.Console.GetOpt
 import Service
 import Data.Maybe (fromMaybe)
 import System.Environment (lookupEnv, getArgs)
+import System.FilePath.Posix (splitExtension, (<.>))
 import Data.Char (isSpace)
 
   
 
 data Options = Options
   { optLangs  :: LangPair 
-  , optSuffix :: Maybe String
   , optUser   :: Maybe User
   , optFiles  :: [FilePath ]
   }
@@ -20,7 +21,6 @@ data Options = Options
 defaultOptions :: Options
 defaultOptions = Options
   { optLangs = ("","")
-  , optSuffix = Nothing 
   , optUser = Nothing 
   , optFiles = []
   }
@@ -37,9 +37,6 @@ options =
         let (f,_) = optLangs ops
         in ops { optLangs = (f,t)}) "LANG")
       "in ISO 2-char form" 
-  , Option ['o'] ["out-suffix"]
-      (OptArg (\ms ops -> return $ ops { optSuffix = ms}) "EXT")
-      "Suffix for output files"
   , Option ['u'] ["user"]
       (OptArg (\mu ops -> 
         case mu of
@@ -48,20 +45,33 @@ options =
             mu <- getUser
             putStrLn $ "\nUser is: " <> show mu
             return $ maybe ops (\u -> ops {optUser = Just u}) mu) "USER")
-      "User for translation service"
+      "User for translation service. If not given, use MT_USER environment variable"
   ]
       
-
-translateFile :: MTService -> Maybe String -> FilePath -> IO ()
-translateFile mt ext path = do
-  contents <- IOT.readFile path
+translateLatexFile, translateXmlFile :: MTService -> FilePath -> FilePath -> IO ()
+translateLatexFile mt in_path out_path = do
+  contents <- IOT.readFile in_path
   translation <- latexTranslate mt contents
-  let outPath = path ++ "." ++ getExt ext
-  IOT.writeFile outPath translation
-  putStrLn $ "Translated into " ++ outPath
-    where
-      getExt = fromMaybe (snd $ pair mt)
-      
+  IOT.writeFile out_path translation
+  putStrLn $ "Translated into " ++ out_path
+
+translateXmlFile mt in_path out_path = do
+    contents <- readFile in_path
+    translation <- xmlTranslate mt contents
+      -- let contents' = showTopElement root'
+    writeFile out_path $ decodeHTML translation
+    putStrLn $ "Translated into " ++ out_path
+  
+
+translateFile :: MTService -> FilePath -> IO ()
+translateFile mt in_path = 
+  case ext of
+    ".xml" -> translateXmlFile mt in_path out_path
+    ".tex" -> translateLatexFile mt in_path out_path
+  where
+    (fname, ext) = splitExtension in_path
+    lang = snd $ pair mt
+    out_path = fname <.> lang <.> ext
 
 getUser :: IO (Maybe User)
 getUser = lookupEnv "MT_USER"
@@ -78,8 +88,7 @@ main = do
         (_,"")     -> ioError (userError "Must specify 'to LANG")
         (lin,lout) -> do
             let mt = makeMT (optUser opts)  lin lout
-                ext = optSuffix opts
-            mapM_ (translateFile mt ext) nonOptions
+            mapM_ (translateFile mt) nonOptions
     else ioError (userError $ concat errors ++ usageInfo header options)
   where header = "Usage: ? -f LANG -t LANG [OPTION..] files..."
   

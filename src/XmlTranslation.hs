@@ -79,15 +79,3 @@ main = do
         test_in_path = "test/samples/fourier-series.xml"
         test_out_path = test_in_path ++ "." ++ lang2
 
-{- main2 :: IO ()
-main2 = do
-   contents <- readFile test_in_path
-   
-       mt = makeMT (Just user) "es" "ca" 
-   -- contents' <- xmlTranslate mt contents
-   let contents' = decodeHTML contents
-   writeFile test_out_path contents'
-   where
-        test_in_path = "test/samples/fourier-series.xml2~"
-        test_out_path = test_in_path ++ "~"
- -}

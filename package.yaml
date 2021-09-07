@@ -31,6 +31,8 @@ library:
   dependencies:
     - req >= 3.9
     - aeson >= 1.5
+    - xml
+    - tagsoup
     - HaTeX
     - bytestring
     - text >= 1.2
@@ -52,6 +54,7 @@ executables:
       - req >= 3.9
       - aeson >= 1.5
       - bytestring
+      - filepath
     default-extensions:
       - OverloadedStrings
 

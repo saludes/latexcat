@@ -36,7 +36,8 @@ library
       OverloadedStrings
       BlockArguments
   build-depends:
-      aeson >=1.5
+      HaTeX
+    , aeson >=1.5
     , base >=4.7 && <5
     , bytestring
     , html-entities
@@ -62,6 +63,7 @@ executable hatexmt-exe
     , aeson >=1.5
     , base >=4.7 && <5
     , bytestring
+    , filepath
     , hatexmt
     , req >=3.9
     , text >=1.2

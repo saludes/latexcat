@@ -2,3 +2,4 @@
 *~
 test/samples/*.tex*
 .DS_Store
+test/samples/*.*.xml
