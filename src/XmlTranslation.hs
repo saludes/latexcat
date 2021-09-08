@@ -61,21 +61,37 @@ printCData (CData _ s line) = do
 decodeHTML :: XMLString -> XMLString
 decodeHTML  =  render . TS.parseTags
     where
-        config = TS.renderOptions { TS.optEscape = id} :: TS.RenderOptions XMLString
+        unesc :: String -> String
+        unesc s = 
+            case break (`elem` special) s of
+                (pre,'&':post) -> pre ++ "&amp;" ++ unesc post
+                (pre,'<':post) -> pre ++ "&lt;" ++ unesc post
+                (pre,'>':post) -> pre ++ ">" ++ unesc post  -- JP uses '&lt;' but not '&gt;'; why?
+                (pre,"")       -> pre
+                _              -> error $ "while unescaping: " ++ s
+            where
+                special :: [Char]
+                special = "&<>"
+        mini = (`elem` minTags) where
+            minTags = words "xi:include image xref video col"
+        config = TS.renderOptions
+            { TS.optEscape = unesc
+            , TS.optMinimize = mini
+            } :: TS.RenderOptions XMLString
         render = TS.renderTagsOptions config
         
 
 main :: IO ()
 main = do
-    contents <- readFile test_in_path
-    contents' <- xmlTranslate mt contents
-    -- let contents' = showTopElement root'
-    writeFile test_out_path $ decodeHTML contents'
+    xml <- readFile test_in_path
+    case parseXMLDoc xml of
+        Just root -> do
+            root' <- transform pure root
+            let contents' = decodeHTML $ showTopElement root'
+            writeFile test_out_path  contents'
+        _         -> error "parsing failed."
+    
     where
-        lang1 = "es"
-        lang2 = "ca"
-        user = "jordi.saludes@upc.edu"
-        mt = makeMT  (Just user) lang1  lang2
         test_in_path = "test/samples/fourier-series.xml"
-        test_out_path = test_in_path ++ "." ++ lang2
+        test_out_path = test_in_path ++ ".out"
 
