@@ -14,7 +14,7 @@ xmlTranslate mt src_text = do
     case parseXMLDoc src_text of
         Just root -> do
                 root' <- transform sq root
-                pure $ showTopElement root'
+                pure $ decodeHTML $ showTopElement root'
         _         -> error "parsing failed."
     where
         sq s = do
