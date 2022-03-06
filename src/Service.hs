@@ -7,6 +7,7 @@ module Service (
     ISOLang, LangPair) where
 
 import Network.HTTP.Req
+-- import qualified Network.HTTP.Client as NC -- for proxy
 import Data.Aeson
 import Data.Text hiding (strip, length, all)
 import Control.Monad.IO.Class
@@ -32,7 +33,7 @@ type TranslationResult = Either String Text
 data MTService = MT
     { user :: Maybe User
     , pair :: LangPair
-    , query :: Text -> IO Text
+    , query :: Text -> IO (Either Int Text)
     }
 
 instance Show MTService where
@@ -47,16 +48,23 @@ makeMT muser src dst = MT
     }
     where Just pair = makeLangPair src dst
 
-getTranslation :: Maybe User -> LangPair -> Text -> IO Value
+
+getTranslation :: Maybe User -> LangPair -> Text -> IO (Either Int Value)
 getTranslation muser langs src_text = 
-    runReq defaultHttpConfig $ do
-        r <- req
+    runReq httpConfig $ do
+        resp <- req
                 GET
                 (https url /: "get")
                 NoReqBody
                 jsonResponse params'
-        return (responseBody r :: Value)
+        return $ case responseStatusCode resp of
+            200 ->  Right (responseBody resp :: Value)
+            n   -> Left n 
     where
+        httpConfig = defaultHttpConfig { 
+            httpConfigCheckResponse = \_ _ _ -> Nothing
+            -- , httpConfigProxy = Just $ NC.Proxy "127.0.0.1" 8080
+        }
         (src,dst) = langs
         params = 
             "q" =: src_text <>
@@ -72,17 +80,20 @@ parseResponse = withObject "response" $ \o -> do
     then do withObject "data" (.: "translatedText") rdata
     else fail $ "Failed, Reason: " ++ show status
 
-_translate :: Maybe User -> LangPair -> Text -> IO Text
+_translate :: Maybe User -> LangPair -> Text -> IO (Either Int Text)
 _translate muser pair src_text = 
     if Data.Text.null text
-        then pure src_text
+        then pure $ Right src_text
         else do
             resp <- getTranslation muser pair text
-            case parse parseResponse resp of 
-                Success txt -> do
-                    let nw = Ck (pre, htmlDecode txt,suff)
-                    pure $ unstrip nw 
-                Error err -> fail err 
+            case resp of
+                Left code -> pure $ Left code
+                Right r -> 
+                    case parse parseResponse r of 
+                        Success txt -> do
+                            let nw = Ck (pre, htmlDecode txt,suff)
+                            pure $ Right $ unstrip nw 
+                        Error err -> fail err 
     where Ck (pre,text,suff) = strip src_text
 
 

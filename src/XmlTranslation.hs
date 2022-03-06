@@ -18,8 +18,10 @@ xmlTranslate mt src_text = do
         _         -> error "parsing failed."
     where
         sq s = do
-            t <- query mt $ T.pack s
-            return $ T.unpack  t
+            resp <- query mt $ T.pack s
+            case resp of
+                Left code -> error $ "Service throw error " ++ show code
+                Right txt -> return $ T.unpack txt
 
 
 transform :: Transformation -> Element -> IO Element

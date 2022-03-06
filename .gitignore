@@ -3,3 +3,14 @@
 test/samples/*.tex*
 .DS_Store
 test/samples/*.*.xml
+*.tex
+*.aux
+*.log
+*.jpg
+*.pdf
+*.png
+*latexmk
+*.fls
+*.toc
+*.idx
+*.ilg
