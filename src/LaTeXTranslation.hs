@@ -10,6 +10,8 @@ import Data.Semigroup as S
 import qualified Data.Text.IO as TIO
 import  Control.Monad.Trans.State
 import qualified Data.Char as C
+import Text.Regex.TDFA ((=~))
+import Text.Regex.Base
 
 
 fold :: Monoid b => (Text -> b) -> LaTeX  -> b
@@ -141,6 +143,26 @@ recoverTranslate service = S.texmapM mustProcess trans where
   trans lt = pure lt 
         
 
+fixQuotes :: LaTeX -> LaTeX 
+fixQuotes = S.texmap mustProcess fixq where
+  fixq (S.TeXRaw txt) = S.TeXRaw $ _fixQuotes txt
+  fixq latex = latex
+  _fixQuotes :: Text -> Text
+  _fixQuotes = T.pack . matchQ [] . T.unpack
+    where
+      matchQ txt0 txt = 
+          if i >= 0
+            then
+              let
+                (pre, txt') = splitAt i txt
+                (m,rest) = splitAt l txt'
+                m' = [head m] ++ "'" ++ [last m]
+              in matchQ (txt0 ++ pre ++ m') rest
+          else txt0 ++ txt
+        where
+          (i,l) =  txt =~ re :: (MatchOffset, MatchLength)
+          re =  "(l)'.*\\b([aeiouAEIOUhH])" :: String
+
 
 countWords :: LaTeX  -> Int
 countWords = getSum . fold (S.Sum . wordCount)
@@ -192,11 +214,12 @@ main = do
   let Right latex = parseLaTeX txt
       pre = S.getPreamble latex
       Just body = S.getBody latex
-      user = Just "jordi.saludes@upc.edu"
-      mt = makeMT user "ca" "en"
-  body' <- recoverTranslate mt body
+      {-user = Just "jordi.saludes@upc.edu"
+      mt = makeMT user "ca" "en" 
+  body' <- recoverTranslate mt body -}
+  let body' = fixQuotes body
   let latex' = pre <> document body'
-  TIO.writeFile (dir ++ "30.ca.tex") $ render $ pre <> body'
+  TIO.writeFile (dir ++ "30.ca.tex") . render $ latex
       -- runStateT (firstWords latex) 0 <&> fst
       -- (lt1, lt2) = split 100 body
   --return (pre, body) -- <> lt1, pre <> lt2)
