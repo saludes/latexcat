@@ -5,71 +5,13 @@ import Text.LaTeX hiding (words)
 import qualified Text.LaTeX.Base.Syntax as S
 import qualified Data.Text as T
 import Data.Functor ((<&>))
-import Data.Semigroup as S
+-- import Data.Semigroup (Sum (..))
 
 import qualified Data.Text.IO as TIO
-import  Control.Monad.Trans.State
+import  Control.Monad.State.Lazy
 import qualified Data.Char as C
 import Text.Regex.TDFA ((=~))
 import Text.Regex.Base
-
-
-fold :: Monoid b => (Text -> b) -> LaTeX  -> b
-fold f = visitLatex where
-  visitLatex latex =
-    case latex of
-      S.TeXRaw txt -> f txt 
-      S.TeXComm cmd args -> 
-        if mustTranslateCommArgs cmd
-          then mconcat $ map visitArg args
-          else mempty
-      S.TeXCommS _ -> mempty 
-      S.TeXEnv env args latex ->
-        if mustTranslateEnvContent env
-          then visitLatex latex -- TODO: Must visit the arguments too?
-          else mempty 
-      S.TeXBraces latex -> visitLatex latex
-      S.TeXSeq latex1 latex2 ->
-        visitLatex latex1 <> visitLatex latex2
-      S.TeXMath _ _  -> mempty -- TODO: Must visit \mbox'es inside math? 
-      S.TeXComment _ -> mempty -- comments are not considered
-      _            -> mempty
-  visitArg (S.FixArg ltx) = visitLatex ltx
-  visitArg (S.OptArg ltx) = visitLatex ltx
-  visitArg (S.MOptArg ltxs) = mconcat $ map visitLatex ltxs
-  visitArg (S.SymArg ltx) = visitLatex ltx
-  visitArg (S.MSymArg ltxs) = mconcat $ map visitLatex ltxs
-  visitArg (S.ParArg ltx) = visitLatex ltx
-  visitArg (S.MParArg ltxs) = mconcat $ map visitLatex ltxs
-
-transform :: Monad m => (Text -> m Text) -> LaTeX -> m LaTeX
-transform f = transL where
-  transL latex =
-    case latex of
-      S.TeXRaw txt -> f txt <&> S.TeXRaw
-      S.TeXComm cmd args -> 
-        if mustTranslateCommArgs cmd
-          then mapM transA args <&> S.TeXComm cmd
-          else return latex
-      S.TeXEnv env args latex ->
-        if mustTranslateEnvContent env
-          then transL latex  <&> S.TeXEnv env args-- TODO: Must visit the arguments too?
-          else pure latex 
-      S.TeXBraces latex -> transL latex <&> S.TeXBraces
-      S.TeXSeq latex1 latex2 -> do
-          tl1 <- transL latex1
-          tl2 <- transL latex2
-          pure $ S.TeXSeq tl1 tl2
-      S.TeXMath _ _  -> pure latex -- TODO: Must visit \mbox'es inside math? 
-      S.TeXComment _ -> pure latex -- comments are not considered
-      _              -> pure latex
-  transA (S.FixArg ltx) = transL ltx <&> S.FixArg
-  transA (S.OptArg ltx) = transL ltx <&> S.OptArg
-  transA (S.MOptArg ltxs) = mapM transL ltxs <&> S.MOptArg
-  transA (S.SymArg ltx) = transL ltx <&> S.SymArg
-  transA (S.MSymArg ltxs) = mapM transL ltxs <&> S.MSymArg
-  transA (S.ParArg ltx) = transL ltx <&> S.ParArg
-  transA (S.MParArg ltxs) = mapM transL ltxs <&> S.MParArg
 
 
 latexTranslate :: MTService -> Text -> IO Text
@@ -142,6 +84,22 @@ recoverTranslate service = S.texmapM mustProcess trans where
         pure lt  -- Already done
   trans lt = pure lt 
         
+--
+-- Preprocessing
+--
+putTranslationMarks :: LangPair -> LaTeX -> LaTeX 
+putTranslationMarks (src,dst) = S.texmap mustProcess mark
+  where
+    label = T.pack $ "<<" ++ src ++ ":" ++ dst ++ ">>"
+    mark (S.TeXRaw txt) | wordCount txt > 1 =
+      S.TeXRaw $ 
+        case T.stripPrefix label txt of
+          Just _  -> txt
+          Nothing -> label <> txt
+    mark latex = latex
+--
+-- Postprocessing
+--
 
 fixQuotes :: LaTeX -> LaTeX 
 fixQuotes = S.texmap mustProcess fixq where
@@ -165,46 +123,21 @@ fixQuotes = S.texmap mustProcess fixq where
 
 
 countWords :: LaTeX  -> Int
-countWords = getSum . fold (S.Sum . wordCount)
+countWords latex = execState sumall 0
+  where
+    sumall = S.texmapM mustProcess count latex
+    count :: LaTeX -> State Int LaTeX
+    count (S.TeXRaw txt) =  do
+      n <- get
+      put $ n + wordCount txt
+      pure S.TeXEmpty
+    count _ = pure S.TeXEmpty 
 
 wordCount :: Text -> Int
 wordCount = length . filter (all isUAlpha) . words . T.unpack where
   other :: [C.Char]
   other = "'·àèéíóòúïüç"
   isUAlpha c = C.isAlpha c || C.toLower c `elem` other 
-
-chunks :: Int -> LaTeX  -> [Text]
-chunks n = fold (\txt ->
-  let nwords = length (T.words txt)
-  in [txt | nwords > n])
-
-firstWords :: LaTeX -> StateT Int IO LaTeX
-firstWords = transform (\t -> do
-    n <- get
-    if n > 100
-      then return ""
-      else do
-        put $ n + length (T.words t)
-        return t)
-
-split :: Int -> LaTeX -> (LaTeX, LaTeX)
-split n = splitTo n where
-  -- splitTo :: Int -> LaTeX -> (LaT)
-  splitTo n lt@(S.TeXSeq lt1 lt2) =
-    let 
-      n1 = countWords lt1
-      n2 = countWords lt2
-    in  if n1 + n2 <= n
-          then (lt, S.TeXEmpty)
-          else if n1 <= n
-            then
-              let (lt3,lt4) = splitTo (n-n1) lt2
-              in (lt1 <> lt3, lt4)
-            else
-              let (lt3,lt4) = splitTo n lt1
-              in (lt3, lt4 <> lt2)
-  splitTo _ lt = (lt, S.TeXEmpty) 
-      
 
 
 main :: IO ()
@@ -217,9 +150,11 @@ main = do
       {-user = Just "jordi.saludes@upc.edu"
       mt = makeMT user "ca" "en" 
   body' <- recoverTranslate mt body -}
-  let body' = fixQuotes body
+  -- let body' = fixQuotes body
+  putStrLn $ "words: " ++ show (countWords body)
+  let body' = putTranslationMarks ("en", "ca") body
   let latex' = pre <> document body'
-  TIO.writeFile (dir ++ "30.ca.tex") . render $ latex
+  TIO.writeFile (dir ++ "30-other.tex") . render $ latex'
       -- runStateT (firstWords latex) 0 <&> fst
       -- (lt1, lt2) = split 100 body
   --return (pre, body) -- <> lt1, pre <> lt2)
