@@ -45,6 +45,7 @@ library:
     - yaml >= 0.11.5
     - raw-strings-qq >= 1.1
     - directory >= 1.3.6
+    - terminal-progress-bar >= 0.4
 
 executables:
   hatexmt-exe:

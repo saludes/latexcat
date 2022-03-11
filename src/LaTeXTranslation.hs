@@ -6,13 +6,13 @@ import Text.LaTeX hiding (words)
 import qualified Text.LaTeX.Base.Syntax as S
 import qualified Data.Text as T
 import Data.Functor ((<&>))
--- import Data.Semigroup (Sum (..))
-
 import qualified Data.Text.IO as TIO
-import  Control.Monad.State.Lazy
+import Control.Monad.State.Lazy
 import qualified Data.Char as C
 import Text.Regex.TDFA ((=~))
 import Text.Regex.Base
+import qualified System.ProgressBar as PB
+import qualified GHC.Conc.IO as CIO
 
 
 latexTranslate :: MTService -> Text -> IO Text
@@ -134,14 +134,43 @@ countWords config latex = execState sumall 0
       n <- get
       put $ n + wordCount txt
       pure S.TeXEmpty
-    count _ = pure S.TeXEmpty 
+    count _ = pure S.TeXEmpty
+
+
+withProgress :: (Text -> IO LaTeX) -> Config -> LaTeX -> IO LaTeX
+withProgress f config latex = do
+  let nwords = countWords config latex
+      mp = mustProcess config
+  pb <- PB.newProgressBar PB.defStyle 10 (PB.Progress 0 nwords ())
+  let fio (S.TeXRaw txt) = do
+        let n = wordCount txt
+        PB.incProgress pb n
+        f txt 
+      fio lt = pure lt
+  S.texmapM mp fio latex
+  
+  
+
+
 
 
 wordCount :: Text -> Int
 wordCount = length . filter (all isUAlpha) . words . T.unpack where
   other :: [C.Char]
   other = "'·àèéíóòúïüç"
-  isUAlpha c = C.isAlpha c || C.toLower c `elem` other 
+  isUAlpha c = C.isAlpha c || C.toLower c `elem` other
+
+
+getMark :: Text -> (Maybe LangPair, Text)
+getMark txt | txt =~ mark_ = 
+  case txt =~ mark_ :: (Text, Text, Text, [Text]) of
+    ("", _, post, [src,dst]) -> (Just (T.unpack src, T.unpack dst), post)
+    _                  -> (Nothing, txt)
+  where
+    lang_ = "([a-z]{2})"
+    mark_ = "<<" ++ lang_ ++ ":" ++ lang_ ++ ">>"
+getMark txt = (Nothing, txt)
+
 
 
 main :: IO ()
@@ -158,12 +187,17 @@ main = do
   putStrLn $ "words: " ++ show nwords
   let user = Just "jordi.saludes@upc.edu"
       mt = makeMT user "ca" "en"
-  body' <- translateMarks config mt body
+      wasteTime t = \latex -> do
+        CIO.threadDelay (t * 1000)  -- ms
+        pure S.TeXEmpty
+  withProgress  (wasteTime 1) config body
+  return ()
+  {-- body' <- translateMarks config mt body
   -- let body' = fixQuotes body
   -- let body' = putTranslationMarks config langs body
-  let latex' = preamble <> document body'
+  - let latex' = preamble <> document body'
       dstFile = dir ++ srcFile ++ ".marked"
-  TIO.writeFile dstFile . render $ latex'
+  TIO.writeFile dstFile . render $ latex' –}
       -- runStateT (firstWords latex) 0 <&> fst
       -- (lt1, lt2) = split 100 body
-  --return (pre, body) -- <> lt1, pre <> lt2)
+  --return (pre, body) -- <> lt1, pre <> lt2) -}
