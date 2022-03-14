@@ -79,7 +79,26 @@ translateMarks config service = S.texmapM mp trans
           Nothing -> do
             -- TIO.putStrLn $ "Skipping <segment>" <> txt <> "</segment>"
             pure lt  -- Already done
-    trans lt = pure lt 
+    trans lt = pure lt
+
+translateMarks_ :: MTService -> Text -> IO LaTeX 
+translateMarks_ service txt = 
+  case T.stripPrefix caen txt of
+    Just txt' -> do
+      resp <- query service txt'
+      case resp of
+        Left code -> do
+          putStrLn $ "code: " ++ show code
+          pure $ S.TeXRaw txt
+        Right ttxt -> do
+          TIO.putStrLn $ "translated:" <> ttxt
+          pure $ S.TeXRaw ttxt
+    Nothing -> pure $ S.TeXRaw txt
+  where 
+    caen = "<<ca:en>>"
+          
+
+
   
         
 --
@@ -148,6 +167,13 @@ withProgress f config latex = do
         f txt 
       fio lt = pure lt
   S.texmapM mp fio latex
+
+mockText :: Text -> IO LaTeX
+mockText  txt = case T.stripPrefix caen txt of
+    Just txt' -> pure $ S.TeXComment  "replaced"
+    Nothing -> pure $ S.TeXRaw txt
+  where 
+    caen = "<<ca:en>>"
   
   
 
@@ -176,28 +202,27 @@ getMark txt = (Nothing, txt)
 main :: IO ()
 main = do
   let dir = "/Users/saludes/Desktop/AgustíR/HistoriaGeoDiff/"
-      srcFile = "hgd-utf8-orig.tex"
-  let langs = ("ca","en")
+      srcFile = "hgd_caen_utf8.tex"
+  -- let langs = ("ca","en")
   config <- getConfig Nothing
   txt <- TIO.readFile $ dir ++ srcFile
   let Right latex = parseLaTeX txt
       preamble = S.getPreamble latex
       Just body = S.getBody latex
-      nwords = countWords config body
-  putStrLn $ "words: " ++ show nwords
+      -- nwords = countWords config body
+  -- putStrLn $ "words: " ++ show nwords
   let user = Just "jordi.saludes@upc.edu"
       mt = makeMT user "ca" "en"
       wasteTime t = \latex -> do
         CIO.threadDelay (t * 1000)  -- ms
         pure S.TeXEmpty
-  withProgress  (wasteTime 1) config body
-  return ()
+  body' <- withProgress (translateMarks_ mt) config body
   {-- body' <- translateMarks config mt body
   -- let body' = fixQuotes body
-  -- let body' = putTranslationMarks config langs body
-  - let latex' = preamble <> document body'
-      dstFile = dir ++ srcFile ++ ".marked"
-  TIO.writeFile dstFile . render $ latex' –}
+  -- let body' = putTranslationMarks config langs body -}
+  let latex' = preamble <> document body'
+      dstFile = dir ++ srcFile ++ ".en.tex"
+  TIO.writeFile dstFile . render $ latex'
       -- runStateT (firstWords latex) 0 <&> fst
       -- (lt1, lt2) = split 100 body
   --return (pre, body) -- <> lt1, pre <> lt2) -}
