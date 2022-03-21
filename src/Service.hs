@@ -2,7 +2,7 @@ module Service (
     makeMT, 
     MTService,
     makeLangPair,
-    query, pair,
+    query,
     User,
     ISOLang, LangPair) where
 
@@ -32,22 +32,18 @@ type TranslationResult = Either String Text
 
 data MTService = MT
     { user :: Maybe User
-    , pair :: LangPair
-    , query :: Text -> IO (Either Int Text)
+    , query :: LangPair -> Text -> IO (Either Int Text)
     }
 
 instance Show MTService where
-    show (MT user (l0,l1) _) = maybe s (\u -> s ++ " for " ++ u) user ++ ")"
-        where s = "(MT service " ++ l0 ++ ">" ++ l1 
+    show (MT user  _) = maybe s (\u -> s ++ " for " ++ u) user ++ ")"
+        where s = "<MT service>" 
 
-makeMT :: Maybe User -> String -> String -> MTService
-makeMT muser src dst = MT 
+makeMT :: Maybe User  -> MTService
+makeMT muser  = MT 
     { user = muser
-    , pair = pair
-    , query = _translate muser pair
+    , query = _translate muser
     }
-    where Just pair = makeLangPair src dst
-
 
 getTranslation :: Maybe User -> LangPair -> Text -> IO (Either Int Value)
 getTranslation muser langs src_text = 

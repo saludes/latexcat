@@ -18,7 +18,7 @@ xmlTranslate mt src_text = do
         _         -> error "parsing failed."
     where
         sq s = do
-            resp <- query mt $ T.pack s
+            resp <- query mt ("es","ca") $ T.pack s -- TODO: language must not be constant
             case resp of
                 Left code -> error $ "Service throw error " ++ show code
                 Right txt -> return $ T.unpack txt

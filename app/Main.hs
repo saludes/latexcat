@@ -1,4 +1,5 @@
-import LaTeXTranslation (latexTranslate)
+import LaTeXTranslation (translateLaTeXDoc)
+import Config (getConfig)
 import XmlTranslation (xmlTranslate, decodeHTML)
 import Data.Foldable (for_)
 import qualified Data.Text as T
@@ -51,7 +52,8 @@ options =
 translateLatexFile, translateXmlFile :: MTService -> FilePath -> FilePath -> IO ()
 translateLatexFile mt in_path out_path = do
   contents <- IOT.readFile in_path
-  translation <- latexTranslate mt contents
+  cfg <- getConfig Nothing
+  translation <- translateLaTeXDoc cfg mt contents
   IOT.writeFile out_path translation
   putStrLn $ "Translated into " ++ out_path
 
@@ -70,8 +72,7 @@ translateFile mt in_path =
     ".tex" -> translateLatexFile mt in_path out_path
   where
     (fname, ext) = splitExtension in_path
-    lang = snd $ pair mt
-    out_path = fname <.> lang <.> ext
+    out_path = fname <.> "trans" <.> ext
 
 getUser :: IO (Maybe User)
 getUser = lookupEnv "MT_USER"
@@ -83,11 +84,11 @@ main = do
   if null errors
     then do
       opts <- foldl (>>=) (return defaultOptions) actions
-      case optLangs opts of
+      case optLangs opts of -- TODO: remove this option and add action for marking
         ("",_)     -> ioError (userError "Must specify 'from' LANG")
         (_,"")     -> ioError (userError "Must specify 'to LANG")
         (lin,lout) -> do
-            let mt = makeMT (optUser opts)  lin lout
+            let mt = makeMT (optUser opts)
             mapM_ (translateFile mt) nonOptions
     else ioError (userError $ concat errors ++ usageInfo header options)
   where header = "Usage: ? -f LANG -t LANG [OPTION..] files..."

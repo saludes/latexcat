@@ -1,0 +1,20 @@
+environments:
+  - equation
+  - align
+  # is this standard?
+  # - wrapfigure
+  # - figure
+commands:
+  # Style
+  - emph
+  - em 
+  - it
+  # Sectioning
+  - title
+  - chapter
+  - section
+  - subsection
+  - subsubsection
+  # Other
+  - footnote
+  - caption

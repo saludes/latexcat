@@ -7,22 +7,13 @@ import qualified Text.LaTeX.Base.Syntax as S
 import qualified Data.Text as T
 import Data.Functor ((<&>))
 import qualified Data.Text.IO as TIO
-import Control.Monad.State.Lazy
 import qualified Data.Char as C
 import Text.Regex.TDFA ((=~))
 import Text.Regex.Base
 import qualified System.ProgressBar as PB
 import qualified GHC.Conc.IO as CIO
+import  Control.Monad.Trans.State.Lazy
 
-
-latexTranslate :: MTService -> Text -> IO Text
-latexTranslate mt src_text = 
-    case parseLaTeX src_text of
-        Left err -> fail $ show err
-        Right latex  -> do
-            config <- getConfig Nothing
-            latex' <- translate config mt latex
-            return  $ render latex' 
 
 
 mustProcess :: Config -> LaTeX ->  Bool
@@ -37,66 +28,65 @@ mustProcess config = p where
   -- p (S.TeXSeq _ _)  = True
   p _               = False
 
+data Segment 
+    = Translate LangPair Text
+    | Done Text
+  deriving Show
 
-wrap :: Int -> Text
-wrap code = T.pack $ "<<" ++ show code ++ ">>"
+putSegment :: Segment -> Text
+getSegment :: Text -> Segment
+getSegment txt = 
+      case txt =~ re of
+        [[pre, l1,l2]] -> Translate (up l1, up l2) (T.drop (T.length pre) txt)
+        _              -> Done txt
+      where re =  "<<([a-z]{2}):([a-z]{2})>>" :: Text
+            up = T.unpack
 
-
-translate :: Config -> MTService -> LaTeX -> IO LaTeX 
-translate config service = S.texmapM mp trans
+putSegment (Done txt) = txt
+putSegment (Translate lpair txt) = wrap lpair <> txt
   where
-    mp = mustProcess config  
-    trans (S.TeXRaw txt) | wordCount txt >= 1 = 
-        do
-          trans <- query service txt
-          pure $ case trans of
-            Left code -> S.TeXRaw $ wrap code <> txt
-              --S.TeXSeq (S.TeXComment $ "MT code: " <> T.pack (show code)) (S.TeXRaw txt)
-            Right  ttxt -> S.TeXRaw ttxt
+    wrap :: LangPair -> Text  
+    wrap (l1,l2) = T.pack $ "<<" ++ l1 ++ ":" ++ l2 ++ ">>"
+
+
+translateLaTeX :: Config -> MTService -> LaTeX -> IO LaTeX 
+translateLaTeX cfg service latex = do
+    (latex', notDone) <- runStateT transM False
+    putStrLn $ if notDone then "Still." else "Finished!"
+    return latex'
+  where
+    trans :: LaTeX -> StateT Bool IO LaTeX
+    trans (S.TeXRaw txt) = translateSegment service (getSegment txt) <&> S.TeXRaw . putSegment
     trans latex = pure latex
+    transM = S.texmapM mp trans latex
+    mp  = mustProcess cfg
 
+translateLaTeXDoc :: Config -> MTService  -> Text -> IO Text
+translateLaTeXDoc cfg service doc = do
+    let Right latex = parseLaTeX doc
+        preamble  = S.getPreamble latex
+        Just body = S.getBody latex
+    body' <- translateLaTeX cfg service body
+    return $ render (preamble <> body')
+  
 
-translateMarks :: Config -> MTService -> LaTeX -> IO LaTeX 
-translateMarks config service = S.texmapM mp trans
-  where
-    mp = mustProcess config
-    code429 = wrap 429
-    trans lt@(S.TeXRaw txt) =
-        case T.stripPrefix code429 txt of
-          Just txt' -> do
-              resp <- query service txt'
-              case resp of
-                Left code  -> do
-                  if code == 429
-                    then pure lt -- translation retried but failed
-                    else do
-                      let  notxt = wrap code <> txt
-                      TIO.putStrLn notxt
-                      pure $ S.TeXRaw $ code429 <> notxt  -- Translation failed for a different reason! Mark it
-                Right ttxt -> do
-                  TIO.putStrLn $ "Done: <segment>" <> ttxt <> "</segment>"
-                  pure $ S.TeXRaw ttxt   -- Translated
-          Nothing -> do
-            -- TIO.putStrLn $ "Skipping <segment>" <> txt <> "</segment>"
-            pure lt  -- Already done
-    trans lt = pure lt
-
-translateMarks_ :: MTService -> Text -> IO LaTeX 
-translateMarks_ service txt = 
-  case T.stripPrefix caen txt of
-    Just txt' -> do
-      resp <- query service txt'
+translateSegment :: MTService -> Segment -> StateT Bool IO Segment
+translateSegment service seg@(Translate lpair srcTxt) = do
+  has429 <- get
+  if has429
+    then do -- Already failed: skip
+      lift $ putStr " "
+      pure seg 
+    else do -- try to translate
+      resp <- lift $ query service lpair srcTxt
       case resp of
-        Left code -> do
-          putStrLn $ "code: " ++ show code
-          pure $ S.TeXRaw txt
-        Right ttxt -> do
-          TIO.putStrLn $ "translated:" <> ttxt
-          pure $ S.TeXRaw ttxt
-    Nothing -> pure $ S.TeXRaw txt
-  where 
-    caen = "<<ca:en>>"
-          
+        Left code | code == 429 -- limit reached now
+            -> lift (putStr "!") >> put True >> pure seg 
+        Left code  -- other code
+            -> error $ "Got error: " ++ show code
+        Right dstTxt -- success
+            -> lift (putStr ".") >> pure (Done dstTxt)
+translateSegment _ seg = pure seg
 
 
   
@@ -142,18 +132,68 @@ fixQuotes config = S.texmap mp fixq
             (i,l) =  txt =~ re :: (MatchOffset, MatchLength)
             re =  "(l)'.*\\b([aeiouAEIOUhH])" :: String
 
-
-countWords :: Config -> LaTeX  -> Int
-countWords config latex = execState sumall 0
+count :: (LaTeX -> Int) -> Config -> LaTeX -> Int
+count f cfg latex  = execState scnt 0
   where
-    mp = mustProcess config
-    sumall = S.texmapM mp count latex
-    count :: LaTeX -> State Int LaTeX
-    count (S.TeXRaw txt) =  do
+    mp = mustProcess cfg
+    scnt = S.texmapM mp fcnt latex
+    fcnt :: LaTeX -> State Int LaTeX
+    fcnt latex = do
       n <- get
-      put $ n + wordCount txt
-      pure S.TeXEmpty
-    count _ = pure S.TeXEmpty
+      put $ n + f latex
+      pure S.TeXEmpty 
+
+
+
+
+countWords, countRemainingWords :: Config -> LaTeX  -> Int
+countSegments, countRemainingSegments :: Config -> LaTeX -> Int
+countWords = count wordCnt
+  where
+    wordCnt (S.TeXRaw txt) = wordCount txt
+    wordCnt _              = 0
+    
+countRemainingWords = count remCnt
+  where
+    remCnt (S.TeXRaw txt) =
+      case getSegment txt of
+        Translate ("ca", "en") txt -> wordCount txt
+        Translate _ _              -> error "Must be ca > en"
+        _                          -> 0
+    remCnt _              = 0
+
+countSegments = count segCnt
+  where
+    segCnt (S.TeXRaw txt) = 1
+    segCnt _              = 0
+
+countRemainingSegments = count segCnt
+  where
+    segCnt (S.TeXRaw txt) =
+      case getSegment txt of
+        Translate ("ca","en") _ -> 1
+        Translate _ _           -> error "Must be ca > en"
+        Done _                  -> 0
+    segCnt _              = 0
+
+
+getFirstSegment :: Config -> LaTeX -> (Int, Segment)
+getFirstSegment cfg latex =
+  case execState (S.texmapM mp getf latex) (0,Nothing) of
+    (nsegs, Just seg) -> (nsegs, seg) 
+    _        -> error "Cant find segment"
+  where
+    mp = mustProcess cfg
+    getf :: LaTeX -> State (Int, Maybe Segment) LaTeX
+    getf (S.TeXRaw txt) = do
+      (nsegs, ms) <- get
+      case ms of
+        Nothing -> case getSegment txt of
+                    Done _ -> put (nsegs +1, Nothing)
+                    seg    -> put (nsegs, Just seg)
+        _       -> return ()
+      pure S.TeXEmpty 
+    getf _              = pure S.TeXEmpty 
 
 
 withProgress :: (Text -> IO LaTeX) -> Config -> LaTeX -> IO LaTeX
@@ -167,17 +207,6 @@ withProgress f config latex = do
         f txt 
       fio lt = pure lt
   S.texmapM mp fio latex
-
-mockText :: Text -> IO LaTeX
-mockText  txt = case T.stripPrefix caen txt of
-    Just txt' -> pure $ S.TeXComment  "replaced"
-    Nothing -> pure $ S.TeXRaw txt
-  where 
-    caen = "<<ca:en>>"
-  
-  
-
-
 
 
 wordCount :: Text -> Int
@@ -198,31 +227,34 @@ getMark txt | txt =~ mark_ =
 getMark txt = (Nothing, txt)
 
 
+remaining :: IO () 
+remaining = do
+  let dir = "/Users/saludes/Desktop/AgustíR/HistoriaGeoDiff/"
+      srcFile = "hgd_caen_utf8.tex"
+  cfg <- getConfig Nothing
+  txt <- TIO.readFile $ dir ++ srcFile
+  let Right latex = parseLaTeX txt
+      preamble = S.getPreamble latex
+      Just body = S.getBody latex
+      totalWords = fromIntegral . countWords cfg $ body :: Float
+      wordsToGo  = fromIntegral . countRemainingWords cfg $ body :: Float
+      totalSegs = countSegments cfg body
+      remSegs = countRemainingSegments cfg body
+      done = 1.0 - wordsToGo/totalWords
+      --seg = getFirstSegment cfg body
+  putStrLn  $ "Done " ++ show (round (100.0 * done)) ++ " %"
+  putStrLn $ show remSegs ++ " remaining from a total of " ++ show totalSegs
+  --print seg
+
 
 main :: IO ()
 main = do
   let dir = "/Users/saludes/Desktop/AgustíR/HistoriaGeoDiff/"
       srcFile = "hgd_caen_utf8.tex"
-  -- let langs = ("ca","en")
-  config <- getConfig Nothing
-  txt <- TIO.readFile $ dir ++ srcFile
-  let Right latex = parseLaTeX txt
-      preamble = S.getPreamble latex
-      Just body = S.getBody latex
-      -- nwords = countWords config body
-  -- putStrLn $ "words: " ++ show nwords
-  let user = Just "jordi.saludes@upc.edu"
-      mt = makeMT user "ca" "en"
-      wasteTime t = \latex -> do
-        CIO.threadDelay (t * 1000)  -- ms
-        pure S.TeXEmpty
-  body' <- withProgress (translateMarks_ mt) config body
-  {-- body' <- translateMarks config mt body
-  -- let body' = fixQuotes body
-  -- let body' = putTranslationMarks config langs body -}
-  let latex' = preamble <> document body'
-      dstFile = dir ++ srcFile ++ ".en.tex"
-  TIO.writeFile dstFile . render $ latex'
-      -- runStateT (firstWords latex) 0 <&> fst
-      -- (lt1, lt2) = split 100 body
-  --return (pre, body) -- <> lt1, pre <> lt2) -}
+      dstFile = dir ++ srcFile ++ ".marked"
+      user = Just "jordi.saludes@upc.edu"
+      mt = makeMT user
+  cfg <- getConfig Nothing
+  doc <- TIO.readFile $ dir ++ srcFile
+  doc' <- translateLaTeXDoc cfg mt doc
+  TIO.writeFile dstFile doc'
