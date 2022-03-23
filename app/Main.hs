@@ -1,4 +1,4 @@
-import LaTeXTranslation (translateLaTeXDoc)
+import LaTeXTranslation (translateLaTeXDoc, getDocStatus)
 import Config (getConfig)
 import XmlTranslation (xmlTranslate, decodeHTML)
 import Data.Foldable (for_)
@@ -12,33 +12,23 @@ import System.FilePath.Posix (splitExtension, (<.>))
 import Data.Char (isSpace)
 
   
-
-data Options = Options
-  { optLangs  :: LangPair 
-  , optUser   :: Maybe User
-  , optFiles  :: [FilePath ]
+data Action = Remaining | Mark LangPair | Translate
+data Options = Options 
+  { optAction :: Action
+  , optUser :: Maybe String
+  , optFiles :: [FilePath]
   }
 
 defaultOptions :: Options
 defaultOptions = Options
-  { optLangs = ("","")
+  { optAction = Remaining
   , optUser = Nothing 
   , optFiles = []
   }
 
 options :: [OptDescr (Options -> IO Options)]
 options =
-  [ Option ['f'] ["from-lang"]
-      (ReqArg (\f ops -> return $ 
-        let (_,t) = optLangs ops
-        in ops { optLangs = (f,t)}) "LANG")
-      "in ISO 2-char form" 
-  , Option ['t'] ["to-lang"]
-      (ReqArg (\t ops -> return $ 
-        let (f,_) = optLangs ops
-        in ops { optLangs = (f,t)}) "LANG")
-      "in ISO 2-char form" 
-  , Option ['u'] ["user"]
+  [ Option ['u'] ["user"]
       (OptArg (\mu ops -> 
         case mu of
           Just u  -> return $ ops { optUser = Just u }
@@ -47,7 +37,23 @@ options =
             putStrLn $ "\nUser is: " <> show mu
             return $ maybe ops (\u -> ops {optUser = Just u}) mu) "USER")
       "User for translation service. If not given, use MT_USER environment variable"
+
+  , Option ['r'] ["remaining"]
+      (NoArg (\ops -> return ops {optAction = Remaining}))
+      "Show remaining segments"
+
+  , Option ['t'] ["translate"]
+      (NoArg (\ops -> return ops {optAction = Translate}))
+      "Translate file"
+
+  , Option ['m'] ["mark"]
+      (ReqArg (\lp ops -> do
+          let (src,':':dst) = break (==':') lp
+          return ops {optAction = Mark (src,dst)})
+        "SRC:DEST")
+        "Mark file segments."
   ]
+  
       
 translateLatexFile, translateXmlFile :: MTService -> FilePath -> FilePath -> IO ()
 translateLatexFile mt in_path out_path = do
@@ -77,6 +83,17 @@ translateFile mt in_path =
 getUser :: IO (Maybe User)
 getUser = lookupEnv "MT_USER"
 
+
+computeRemaining :: FilePath -> IO ()
+markFile :: LangPair -> FilePath -> IO ()
+computeRemaining path = do
+  cfg <- getConfig Nothing
+  doc <- IOT.readFile path
+  getDocStatus cfg doc
+
+markFile = undefined 
+
+
 main :: IO ()
 main = do
   args  <- getArgs 
@@ -84,12 +101,19 @@ main = do
   if null errors
     then do
       opts <- foldl (>>=) (return defaultOptions) actions
-      case optLangs opts of -- TODO: remove this option and add action for marking
-        ("",_)     -> ioError (userError "Must specify 'from' LANG")
-        (_,"")     -> ioError (userError "Must specify 'to LANG")
-        (lin,lout) -> do
-            let mt = makeMT (optUser opts)
+      case optAction opts of
+        Translate -> do
+            muser <- do
+              case optUser opts of
+                Nothing -> getUser
+                _   -> return Nothing 
+            let mt =  makeMT muser
+            putStrLn $ case user mt of
+              Just u -> "user is: " ++ u
+              _      -> "no user"
             mapM_ (translateFile mt) nonOptions
+        Remaining -> mapM_ computeRemaining nonOptions
+        Mark lp -> mapM_ (markFile lp) nonOptions
     else ioError (userError $ concat errors ++ usageInfo header options)
-  where header = "Usage: ? -f LANG -t LANG [OPTION..] files..."
+  where header = "Usage: ? [-uUSER] [-rt][-m SRC:DEST] files..."
   

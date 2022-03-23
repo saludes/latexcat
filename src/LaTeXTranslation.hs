@@ -1,18 +1,21 @@
 module LaTeXTranslation where
-import Service
+import Service ( MTService(query), LangPair, makeMT )
 import Config (getConfig, Config, commands, environments)
-import Text.LaTeX.Base.Parser
-import Text.LaTeX hiding (words)
+import Text.LaTeX.Base.Parser ( parseLaTeX )
+import Text.LaTeX ( Text, lift, LaTeX, document, Render(render) )
 import qualified Text.LaTeX.Base.Syntax as S
 import qualified Data.Text as T
 import Data.Functor ((<&>))
 import qualified Data.Text.IO as TIO
 import qualified Data.Char as C
 import Text.Regex.TDFA ((=~))
-import Text.Regex.Base
+import Text.Regex.Base ( MatchLength, MatchOffset )
 import qualified System.ProgressBar as PB
 import qualified GHC.Conc.IO as CIO
-import  Control.Monad.Trans.State.Lazy
+import Control.Monad.Trans.State.Lazy
+    ( execState, get, put, State, StateT(runStateT) )
+import Control.Monad (void)
+import System.IO ( stdout, hFlush ) 
 
 
 
@@ -49,25 +52,50 @@ putSegment (Translate lpair txt) = wrap lpair <> txt
     wrap (l1,l2) = T.pack $ "<<" ++ l1 ++ ":" ++ l2 ++ ">>"
 
 
-translateLaTeX :: Config -> MTService -> LaTeX -> IO LaTeX 
+withDocumentM :: Config  -> (LaTeX -> IO LaTeX) -> Text -> IO Text
+withDocumentM cfg f doc = do
+  putStrLn $ "Got " ++ show (T.length doc) ++ " chars"
+  let Right latex = parseLaTeX doc 
+      pre = S.getPreamble latex
+      Just body = S.getBody latex
+      mp = mustProcess cfg
+  body' <- f body 
+  return $ render (pre <> document body')
+
+
+
+markLaTeX :: Config -> LangPair -> LaTeX -> LaTeX
+markDocument :: Config -> LangPair -> Text -> IO Text
+markLaTeX cfg lpair = S.texmap mp mark where
+  mp = mustProcess cfg
+  mark (S.TeXRaw txt) = S.TeXRaw . putSegment $ Translate lpair txt
+  mark latex = latex
+
+markDocument cfg lpair = withDocumentM cfg (return . markLaTeX cfg lpair)
+
+
+translateLaTeX :: Config -> MTService -> LaTeX -> IO LaTeX
+translateLaTeXDoc :: Config -> MTService  -> Text -> IO Text
 translateLaTeX cfg service latex = do
     (latex', notDone) <- runStateT transM False
     putStrLn $ if notDone then "Still." else "Finished!"
     return latex'
   where
     trans :: LaTeX -> StateT Bool IO LaTeX
-    trans (S.TeXRaw txt) = translateSegment service (getSegment txt) <&> S.TeXRaw . putSegment
+    trans (S.TeXRaw txt) = do
+      -- lift $ putStrLn $ show (T.length txt) ++ " chars"
+      ttxt <- translateSegment service (getSegment txt)
+      return $ S.TeXRaw $ putSegment ttxt
     trans latex = pure latex
     transM = S.texmapM mp trans latex
     mp  = mustProcess cfg
 
-translateLaTeXDoc :: Config -> MTService  -> Text -> IO Text
-translateLaTeXDoc cfg service doc = do
-    let Right latex = parseLaTeX doc
+translateLaTeXDoc cfg service = withDocumentM cfg (translateLaTeX cfg service)
+    {-let Right latex = parseLaTeX doc
         preamble  = S.getPreamble latex
         Just body = S.getBody latex
     body' <- translateLaTeX cfg service body
-    return $ render (preamble <> body')
+    return $ render (preamble <> body') -}
   
 
 translateSegment :: MTService -> Segment -> StateT Bool IO Segment
@@ -75,37 +103,26 @@ translateSegment service seg@(Translate lpair srcTxt) = do
   has429 <- get
   if has429
     then do -- Already failed: skip
-      lift $ putStr " "
+      hPutStr " "
       pure seg 
     else do -- try to translate
       resp <- lift $ query service lpair srcTxt
       case resp of
         Left code | code == 429 -- limit reached now
-            -> lift (putStr "!") >> put True >> pure seg 
+            -> hPutStr "!" >> put True >> pure seg 
         Left code  -- other code
             -> error $ "Got error: " ++ show code
         Right dstTxt -- success
-            -> lift (putStr ".") >> pure (Done dstTxt)
+            -> hPutStr "." >> pure (Done dstTxt)
+  where hPutStr s = lift $ putStr s >> hFlush stdout
 translateSegment _ seg = pure seg
+
+
+
 
 
   
         
---
--- Preprocessing
---
-putTranslationMarks :: Config -> LangPair -> LaTeX -> LaTeX 
-putTranslationMarks config (src,dst) =  S.texmap mp mark
-  where
-    mp = mustProcess config
-    label = T.pack $ "<<" ++ src ++ ":" ++ dst ++ ">>"
-    mark (S.TeXRaw txt) | wordCount txt > 1 =
-      S.TeXRaw $ 
-        case T.stripPrefix label txt of
-          Just _  -> txt
-          Nothing -> label <> txt
-    mark latex = latex
-
 --
 -- Postprocessing
 --
@@ -176,6 +193,21 @@ countRemainingSegments = count segCnt
         Done _                  -> 0
     segCnt _              = 0
 
+
+getDocStatus :: Config -> Text -> IO ()
+getDocStatus cfg doc = void (withDocumentM cfg countAll doc)
+  where
+    countAll latex = do
+      let tWords = countWords cfg latex
+          rWords = countRemainingWords cfg latex
+          tSegs = countSegments cfg latex
+          rSegs = countRemainingSegments cfg latex
+          pTodo :: Float
+          pTodo = fromIntegral rWords / fromIntegral tWords
+      putStrLn  $ show rSegs ++ "/" ++ show tSegs ++ " segments"
+      putStr  $ show rWords ++ "/" ++ show tWords ++ " words "
+      putStrLn $ "("  ++ show (round $ 100.0 * (1.0 - pTodo)) ++ "% done)"
+      return S.TeXEmpty
 
 getFirstSegment :: Config -> LaTeX -> (Int, Segment)
 getFirstSegment cfg latex =

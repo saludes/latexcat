@@ -1,5 +1,6 @@
 module Service (
-    makeMT, 
+    makeMT,
+    user, 
     MTService,
     makeLangPair,
     query,
