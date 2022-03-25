@@ -58,5 +58,5 @@ getConfig _  = do
         then getConfigFromFile configFile
         else Y.decodeThrow configYml
 getConfigFromFile path = do 
-    putStrLn $ "Using config from: " ++ path
+    putStrLn $ "Using configuration from file: " ++ path
     Y.decodeFileThrow path

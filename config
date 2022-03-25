@@ -13,8 +13,11 @@ commands:
   - title
   - chapter
   - section
+  - section*
   - subsection
+  - subsection*
   - subsubsection
+  - subsubsection*
   # Other
   - footnote
   - caption

@@ -54,7 +54,6 @@ putSegment (Translate lpair txt) = wrap lpair <> txt
 
 withDocumentM :: Config  -> (LaTeX -> IO LaTeX) -> Text -> IO Text
 withDocumentM cfg f doc = do
-  putStrLn $ "Got " ++ show (T.length doc) ++ " chars"
   let Right latex = parseLaTeX doc 
       pre = S.getPreamble latex
       Just body = S.getBody latex
@@ -204,8 +203,8 @@ getDocStatus cfg doc = void (withDocumentM cfg countAll doc)
           rSegs = countRemainingSegments cfg latex
           pTodo :: Float
           pTodo = fromIntegral rWords / fromIntegral tWords
-      putStrLn  $ show rSegs ++ "/" ++ show tSegs ++ " segments"
-      putStr  $ show rWords ++ "/" ++ show tWords ++ " words "
+      putStr  $ show rSegs ++ "/" ++ show tSegs ++ " segments; "
+      putStr  $ show rWords ++ "/" ++ show tWords ++ " words; "
       putStrLn $ "("  ++ show (round $ 100.0 * (1.0 - pTodo)) ++ "% done)"
       return S.TeXEmpty
 

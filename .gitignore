@@ -16,6 +16,6 @@ test/samples/*.*.xml
 *.ilg
 *.ind
 *.synctex*
-omegat/
+traduccions/*
 *tmx
 omegat*
