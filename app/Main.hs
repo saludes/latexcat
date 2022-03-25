@@ -103,10 +103,7 @@ main = do
       opts <- foldl (>>=) (return defaultOptions) actions
       case optAction opts of
         Translate -> do
-            muser <- do
-              case optUser opts of
-                Nothing -> getUser
-                _   -> return Nothing 
+            muser <- maybe getUser (return . Just) (optUser opts)
             let mt =  makeMT muser
             putStrLn $ case user mt of
               Just u -> "user is: " ++ u
