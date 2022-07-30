@@ -23,6 +23,37 @@ xmlTranslate mt src_text = do
                 Left code -> error $ "Service throw error " ++ show code
                 Right txt -> return $ T.unpack txt
 
+xmlMark :: LangPair -> XMLString -> XMLString
+xmlMark lp srcTxt = 
+    case parseXMLDoc srcTxt of
+        Just root -> decodeHTML . showTopElement $ mark lp root
+        _         -> error "parsing failed"
+
+addLangPair :: LangPair -> Element -> Element 
+addLangPair lp el = 
+    case filter ((==key).attrKey) $ elAttribs el of
+        [] -> add_attr langAtr el
+        [atr] -> if attrVal atr == value
+            then el
+            else error $ "Already marked as " ++ attrVal atr
+        _     -> error "Many lang marks"
+    where
+        (src,dest) = lp
+        key = QName "lang" Nothing (Just "mt")
+        value = src ++ ":" ++ dest
+        langAtr = Attr key value
+
+mark :: LangPair -> Element  -> Element 
+mark lp el = 
+    if isSkipElem el
+        then el
+        else 
+            addLangPair lp $ el {elContent = map markContent $ elContent el}
+    where 
+        markContent (Elem el) = Elem $ mark lp el
+        markContent cnt       = cnt
+
+
 
 transform :: Transformation -> Element -> IO Element
 transform trans el =

@@ -1,6 +1,6 @@
 import LaTeXTranslation (translateLaTeXDoc, getDocStatus)
 import Config (getConfig)
-import XmlTranslation (xmlTranslate, decodeHTML)
+import XmlTranslation (xmlTranslate, decodeHTML, xmlMark)
 import Data.Foldable (for_)
 import qualified Data.Text as T
 import qualified Data.Text.IO as IOT
@@ -53,8 +53,15 @@ options =
         "SRC:DEST")
         "Mark file segments."
   ]
+
+markXmlFile :: LangPair -> FilePath -> FilePath -> IO ()
+markXmlFile lp inPath outPath = do
+  contents <- readFile inPath
+  let contents' = xmlMark lp contents
+  writeFile outPath $ decodeHTML contents'
+  putStrLn $ "Marked into " ++ outPath
+
   
-      
 translateLatexFile, translateXmlFile :: MTService -> FilePath -> FilePath -> IO ()
 translateLatexFile mt in_path out_path = do
   contents <- IOT.readFile in_path
@@ -85,13 +92,20 @@ getUser = lookupEnv "MT_USER"
 
 
 computeRemaining :: FilePath -> IO ()
-markFile :: LangPair -> FilePath -> IO ()
 computeRemaining path = do
   cfg <- getConfig Nothing
   doc <- IOT.readFile path
   getDocStatus cfg doc
 
-markFile = undefined 
+markFile :: LangPair -> FilePath -> IO ()
+markFile lp in_path =
+  case ext of 
+      ".xml" -> markXmlFile lp in_path out_path
+      e      -> error $ "No marking defined for " <> e
+  where
+    (fname, ext) = splitExtension in_path
+    out_path = fname <.> "marked" <.> ext
+
 
 
 main :: IO ()
