@@ -1,6 +1,7 @@
 module XmlTranslation where
 import Text.XML.Light
 import qualified Text.HTML.TagSoup as TS
+import Data.Hashable 
 
 import qualified Data.Text as T
 import Service
@@ -8,66 +9,86 @@ import Service
 type Transformation = String  -> IO String 
 type XMLString = String
 
-xmlTranslate :: MTService -> XMLString -> IO XMLString
-xmlTranslate mt src_text = do
+langKey :: QName
+langKey = QName "langs" Nothing (Just "mt")
+
+xmlTranslate :: Bool -> MTService -> XMLString -> IO XMLString
+xmlTranslate sync mt src_text = do
     let ppc = ppcElement defaultConfigPP
     case parseXMLDoc src_text of
         Just root -> do
-                root' <- transform sq root
+                root' <- translateElement root
                 pure $ decodeHTML $ showTopElement root'
         _         -> error "parsing failed."
     where
-        sq s = do
-            resp <- query mt ("es","ca") $ T.pack s -- TODO: language must not be constant
+        getTranslation :: LangPair -> String -> IO String
+        translateElement :: Element -> IO Element
+        transformContent :: LangPair -> Content -> IO Content
+        getTranslation lp s = do
+            resp <- query mt lp $ T.pack s
             case resp of
                 Left code -> error $ "Service throw error " ++ show code
                 Right txt -> return $ T.unpack txt
+        translateElement el =
+            if isSkipElem el
+            then pure el
+            else case getMark el of
+                Nothing -> pure el
+                Just lp -> do
+                    contents' <- mapM (transformContent lp) $ elContent el
+                    let el' = rmMark $ el {elContent = contents'}
+                    pure el'
+        transformContent _ (Elem el) = Elem <$> translateElement el
+        transformContent lp (Text cdata) = do
+            let cdata' = cdData cdata
+            cdata'' <- getTranslation lp cdata'
+            pure $ Text cdata {cdData = cdata'' }
+        
 
 xmlMark :: LangPair -> XMLString -> XMLString
 xmlMark lp srcTxt = 
     case parseXMLDoc srcTxt of
-        Just root -> decodeHTML . showTopElement $ mark lp root
+        Just root -> decodeHTML . showTopElement $ addMark lp root
         _         -> error "parsing failed"
+
+
 
 addLangPair :: LangPair -> Element -> Element 
 addLangPair lp el = 
-    case filter ((==key).attrKey) $ elAttribs el of
-        [] -> add_attr langAtr el
-        [atr] -> if attrVal atr == value
-            then el
-            else error $ "Already marked as " ++ attrVal atr
-        _     -> error "Many lang marks"
+    case findAttr langKey el of
+        Nothing -> add_attr langAtr el
+        Just _  -> el
     where
         (src,dest) = lp
-        key = QName "lang" Nothing (Just "mt")
         value = src ++ ":" ++ dest
-        langAtr = Attr key value
+        langAtr = Attr langKey value
 
-mark :: LangPair -> Element  -> Element 
-mark lp el = 
+getMark :: Element -> Maybe LangPair 
+addMark :: LangPair -> Element  -> Element
+rmMark :: Element -> Element 
+getMark el = 
+    case findAttr langKey el of
+        Just lp -> case break (==':') lp of
+                    (src,':':dst) -> Just (src, dst)
+                    _             -> error $ "malformed lang pair: " <> lp
+        _       -> Nothing
+    
+addMark lp el = 
     if isSkipElem el
         then el
         else 
             addLangPair lp $ el {elContent = map markContent $ elContent el}
     where 
-        markContent (Elem el) = Elem $ mark lp el
+        markContent (Elem el) = Elem $ addMark lp el
         markContent cnt       = cnt
 
+rmMark el = el {elAttribs = attrs} where
+    attrs = filter ((/=langKey).attrKey) $ elAttribs el
+    
 
 
-transform :: Transformation -> Element -> IO Element
-transform trans el =
-        if isSkipElem el
-        then pure el
-        else do
-            contents' <- mapM transformContent $ elContent el
-            pure $ el {elContent = contents'}
-    where
-        transformContent (Elem el) = Elem <$> transform trans el
-        transformContent (Text cdata) = do
-            let cdata' = cdData cdata
-            cdata'' <- trans cdata'
-            return $ Text cdata {cdData = cdata'' }
+addSync :: Element -> Element 
+addSync = undefined
             
 isSkipElem :: Element -> Bool
 isSkipElem = (`elem` avoidTags) . qName . elName where
@@ -116,14 +137,11 @@ decodeHTML  =  render . TS.parseTags
 
 main :: IO ()
 main = do
+    let mt = makeMT Nothing
     xml <- readFile test_in_path
-    case parseXMLDoc xml of
-        Just root -> do
-            root' <- transform pure root
-            let contents' = decodeHTML $ showTopElement root'
-            writeFile test_out_path  contents'
-        _         -> error "parsing failed."
-    
+    xml' <- xmlTranslate False  mt xml
+            -- let contents' = decodeHTML $ showTopElement root'
+    writeFile test_out_path  xml'    
     where
         test_in_path = "test/samples/fourier-series.xml"
         test_out_path = test_in_path ++ ".out"

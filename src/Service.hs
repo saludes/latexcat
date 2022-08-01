@@ -1,5 +1,5 @@
 module Service (
-    makeMT,
+    makeMT, dryRun,
     user, 
     MTService,
     makeLangPair,
@@ -17,7 +17,7 @@ import Data.Aeson.Types
 import qualified Data.ByteString as BS
 import qualified Data.Char as C
 import Data.Text.Lazy.Builder (toLazyText)
-import Data.Text.Lazy (toStrict)
+import Data.Text.Lazy (toStrict, unpack)
 import HTMLEntities.Decoder (htmlEncodedText)
 -- import Debug.Trace
 
@@ -41,9 +41,15 @@ instance Show MTService where
         where s = "<MT service>" 
 
 makeMT :: Maybe User  -> MTService
+dryRun :: MTService
 makeMT muser  = MT 
     { user = muser
     , query = _translate muser
+    }
+
+dryRun = MT 
+    { user = Nothing
+    , query = __translate
     }
 
 getTranslation :: Maybe User -> LangPair -> Text -> IO (Either Int Value)
@@ -92,6 +98,18 @@ _translate muser pair src_text =
                             pure $ Right $ unstrip nw 
                         Error err -> fail err 
     where Ck (pre,text,suff) = strip src_text
+
+__translate :: LangPair -> Text -> IO (Either Int Text)
+__translate pair src_text = 
+    if Data.Text.null text
+        then pure $ Right src_text
+        else do
+            printIt pair text
+            let nw = Ck (pre, htmlDecode text,suff)
+            pure $ Right $ unstrip nw 
+    where
+        Ck (pre,text,suff) = strip src_text
+        printIt (l1,l2) txt = putStrLn $ "Translating '" ++ Data.Text.unpack txt ++ "' from " ++ l1 ++ " to " ++ l2
 
 
         

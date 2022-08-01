@@ -1,5 +1,5 @@
 import LaTeXTranslation (translateLaTeXDoc, getDocStatus)
-import Config (getConfig)
+import Config (getConfig, useSync)
 import XmlTranslation (xmlTranslate, decodeHTML, xmlMark)
 import Data.Foldable (for_)
 import qualified Data.Text as T
@@ -71,8 +71,9 @@ translateLatexFile mt in_path out_path = do
   putStrLn $ "Translated into " ++ out_path
 
 translateXmlFile mt in_path out_path = do
+    cfg <- getConfig Nothing
     contents <- readFile in_path
-    translation <- xmlTranslate mt contents
+    translation <- xmlTranslate (useSync cfg) mt contents
       -- let contents' = showTopElement root'
     writeFile out_path $ decodeHTML translation
     putStrLn $ "Translated into " ++ out_path
@@ -81,6 +82,7 @@ translateXmlFile mt in_path out_path = do
 translateFile :: MTService -> FilePath -> IO ()
 translateFile mt in_path = 
   case ext of
+    ".ptx" -> translateXmlFile mt in_path out_path -- TODO: remove
     ".xml" -> translateXmlFile mt in_path out_path
     ".tex" -> translateLatexFile mt in_path out_path
   where
@@ -101,6 +103,7 @@ markFile :: LangPair -> FilePath -> IO ()
 markFile lp in_path =
   case ext of 
       ".xml" -> markXmlFile lp in_path out_path
+      ".ptx" -> markXmlFile lp in_path out_path -- TODO: remove
       e      -> error $ "No marking defined for " <> e
   where
     (fname, ext) = splitExtension in_path
@@ -119,6 +122,7 @@ main = do
         Translate -> do
             muser <- maybe getUser (return . Just) (optUser opts)
             let mt =  makeMT muser
+            -- let mt = dryRun -- TODO: for debugging the mt service
             putStrLn $ case user mt of
               Just u -> "user is: " ++ u
               _      -> "no user"
