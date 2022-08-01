@@ -31,19 +31,22 @@ commands:
   # Other
   - footnote
   - caption
+sync: true
 |]
 
 data Config = 
     Cfg {
       environments :: [String]
     , commands :: [String]
+    , useSync :: Bool
     } deriving (Eq, Show)
 
 instance FromJSON Config where
     parseJSON (Y.Object v) = 
         Cfg <$>
         v .: "environments" <*>
-        v .: "commands"
+        v .: "commands" <*>
+        v .: "sync"
     parseJSON _ = fail "Expected Object for Config value"
 
 

@@ -21,3 +21,4 @@ commands:
   # Other
   - footnote
   - caption
+sync: false
