@@ -1,10 +1,15 @@
-import LaTeXTranslation (translateLaTeXDoc, getDocStatus)
-import Config (getConfig, useSync)
-import XmlTranslation (xmlTranslate, decodeHTML, xmlMark)
+import LaTeXTranslation (translateLaTeXDoc, getDocStatus, markLaTeX, markDocument)
+import Config (getConfig, Config)
+import XmlTranslation (xmlTranslate, decodeHTML)
 import Data.Foldable (for_)
 import qualified Data.Text as T
 import qualified Data.Text.IO as IOT
 import System.Console.GetOpt
+    ( getOpt,
+      usageInfo,
+      ArgDescr(ReqArg, OptArg, NoArg),
+      ArgOrder(RequireOrder),
+      OptDescr(..) )
 import Service
 import Data.Maybe (fromMaybe)
 import System.Environment (lookupEnv, getArgs)
@@ -53,16 +58,9 @@ options =
         "SRC:DEST")
         "Mark file segments."
   ]
-
-markXmlFile :: LangPair -> FilePath -> FilePath -> IO ()
-markXmlFile lp inPath outPath = do
-  contents <- readFile inPath
-  let contents' = xmlMark lp contents
-  writeFile outPath $ decodeHTML contents'
-  putStrLn $ "Marked into " ++ outPath
-
   
-translateLatexFile, translateXmlFile :: MTService -> FilePath -> FilePath -> IO ()
+      
+translateLatexFile :: MTService -> FilePath -> FilePath -> IO ()
 translateLatexFile mt in_path out_path = do
   contents <- IOT.readFile in_path
   cfg <- getConfig Nothing
@@ -70,20 +68,11 @@ translateLatexFile mt in_path out_path = do
   IOT.writeFile out_path translation
   putStrLn $ "Translated into " ++ out_path
 
-translateXmlFile mt in_path out_path = do
-    cfg <- getConfig Nothing
-    contents <- readFile in_path
-    translation <- xmlTranslate (useSync cfg) mt contents
-      -- let contents' = showTopElement root'
-    writeFile out_path $ decodeHTML translation
-    putStrLn $ "Translated into " ++ out_path
-  
 
 translateFile :: MTService -> FilePath -> IO ()
 translateFile mt in_path = 
   case ext of
-    ".ptx" -> translateXmlFile mt in_path out_path -- TODO: remove
-    ".xml" -> translateXmlFile mt in_path out_path
+    -- ".xml" -> translateXmlFile mt in_path out_path
     ".tex" -> translateLatexFile mt in_path out_path
   where
     (fname, ext) = splitExtension in_path
@@ -94,23 +83,42 @@ getUser = lookupEnv "MT_USER"
 
 
 computeRemaining :: FilePath -> IO ()
+markFile :: LangPair -> FilePath -> IO ()
 computeRemaining path = do
   cfg <- getConfig Nothing
   doc <- IOT.readFile path
   getDocStatus cfg doc
 
-markFile :: LangPair -> FilePath -> IO ()
 markFile lp in_path =
   case ext of 
-      ".xml" -> markXmlFile lp in_path out_path
-      ".ptx" -> markXmlFile lp in_path out_path -- TODO: remove
+      -- ".xml" -> markXmlFile lp in_path out_path TODO: copy from ptx branch
+      -- ".ptx" -> markXmlFile lp in_path out_path -- TODO: remove
+      ".tex" -> markLaTeXFile lp in_path out_path
       e      -> error $ "No marking defined for " <> e
   where
     (fname, ext) = splitExtension in_path
     out_path = fname <.> "marked" <.> ext
 
 
+markLaTeXFile :: LangPair -> FilePath -> FilePath -> IO ()
+markLaTeXFile lp inPath outPath = do
+  {-contents <- readFile inPath
+  cfg <- getConfig Nothing
+  contents' <- markDocument cfg lp contents
+  -- let contents' = markLaTeX cfg lp contents
+  writeFile outPath $ decodeHTML contents'
+  putStrLn $ "Marked into " ++ outPath
+-}
+  contents <- IOT.readFile inPath
+  cfg <- getConfig Nothing
+  marked <- markDocument cfg lp contents
+  IOT.writeFile outPath marked
+  putStrLn $ "Marked into " ++ outPath
 
+
+
+
+-- latexMark = markLaTeXFile
 main :: IO ()
 main = do
   args  <- getArgs 
@@ -122,7 +130,6 @@ main = do
         Translate -> do
             muser <- maybe getUser (return . Just) (optUser opts)
             let mt =  makeMT muser
-            -- let mt = dryRun -- TODO: for debugging the mt service
             putStrLn $ case user mt of
               Just u -> "user is: " ++ u
               _      -> "no user"
