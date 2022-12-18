@@ -104,6 +104,17 @@ Al directori **test/samples** hi ha un fitxer en català que volem traduir a l'a
 
 3. El text traduït es trobarà a **test/samples/cat1.marked.trans.tex**
 
+### El fixer de configuració
+El fitxer **config** ha d'estar present al directori des d'on engeguem la traducció.
+Aquest és un fixter en format [yaml](https://yaml.org/)  que especifica quines _comandes_ i _entorns_ LaTeX han de ser marcats per a traducció.
+Consta de dues seccions, encapçalades per `commands:` i `environments:` on es donen els noms de les comandes i entorns respectivament
+que cal considerar.
+Cal tenir en compte que la interpretació de les dues seccions és oposada. És a dir:
+
+* Allò que és llistat sota `commands:` **marcat** per a traducció
+
+* Allò que és llistat sota `environments:` **no és** marcat per a traducció
+
 
 
 
