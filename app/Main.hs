@@ -17,7 +17,7 @@ import System.FilePath.Posix (splitExtension, (<.>))
 import Data.Char (isSpace)
 
   
-data Action = Remaining | Mark LangPair | Translate | Help
+data Action = {-Remaining |-} Mark LangPair | Translate | Help
 data Options = Options 
   { optAction :: Action
   , optUser :: Maybe String
@@ -26,7 +26,7 @@ data Options = Options
 
 defaultOptions :: Options
 defaultOptions = Options
-  { optAction = Remaining
+  { optAction = Translate
   , optUser = Nothing 
   , optFiles = []
   }
@@ -47,9 +47,10 @@ options =
             return $ maybe ops (\u -> ops {optUser = Just u}) mu) "USER")
       "User for translation service. If not given, use MT_USER environment variable"
 
-  , Option ['r'] ["remaining"]
+  {-, Option ['r'] ["remaining"]
       (NoArg (\ops -> return ops {optAction = Remaining}))
       "Show remaining segments"
+    -}
 
   , Option ['t'] ["translate"]
       (NoArg (\ops -> return ops {optAction = Translate}))
@@ -132,7 +133,7 @@ main = do
               Just u -> "user is: " ++ u
               _      -> "no user"
             mapM_ (translateFile mt) nonOptions
-        Remaining -> mapM_ computeRemaining nonOptions
+        -- Remaining -> mapM_ computeRemaining nonOptions TODO: implement.
         Mark lp -> mapM_ (markFile lp) nonOptions
     else ioError (userError $ concat errors ++ usageInfo header options)
   

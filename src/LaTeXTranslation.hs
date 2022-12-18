@@ -177,8 +177,8 @@ countRemainingWords = count remCnt
   where
     remCnt (S.TeXRaw txt) =
       case getSegment txt of
-        Translate ("ca", "en") txt -> wordCount txt
-        Translate _ _              -> error "Must be ca > en"
+        Translate _ txt -> wordCount txt
+        -- Translate _ _              -> error "Must be ca > en"
         _                          -> 0
     remCnt _              = 0
 
@@ -191,8 +191,8 @@ countRemainingSegments = count segCnt
   where
     segCnt (S.TeXRaw txt) =
       case getSegment txt of
-        Translate ("ca","en") _ -> 1
-        Translate _ _           -> error "Must be ca > en"
+        Translate _ _ -> 1
+        -- Translate _ _           -> error "Must be ca > en"
         Done _                  -> 0
     segCnt _              = 0
 
@@ -293,5 +293,5 @@ main = do
   cfg <- getConfig Nothing
   doc <- TIO.readFile $ dir ++ srcFile
   doc'  <- markDocument cfg (tolang "eo") doc 
-  -- doc'' <- translateLaTeXDoc cfg mt doc'
+  doc'' <- translateLaTeXDoc cfg mt doc'
   TIO.writeFile dstFile doc'
