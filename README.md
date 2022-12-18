@@ -111,7 +111,7 @@ Consta de dues seccions, encapçalades per `commands:` i `environments:` on es d
 que cal considerar.
 Cal tenir en compte que la interpretació de les dues seccions és oposada. És a dir:
 
-* Allò que és llistat sota `commands:` **marcat** per a traducció
+* Allò que és llistat sota `commands:` **és** marcat per a traducció
 
 * Allò que és llistat sota `environments:` **no és** marcat per a traducció
 
