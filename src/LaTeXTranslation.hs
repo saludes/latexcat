@@ -2,7 +2,7 @@ module LaTeXTranslation where
 import Service ( MTService(query), LangPair, makeMT )
 import Config (getConfig, Config, commands, environments)
 import Text.LaTeX.Base.Parser ( parseLaTeX )
-import Text.LaTeX ( Text, lift, LaTeX, document, Render(render) )
+import Text.LaTeX ( Text, lift, LaTeX, document, Render(render))
 import qualified Text.LaTeX.Base.Syntax as S
 import qualified Data.Text as T
 import Data.Functor ((<&>))
@@ -58,8 +58,9 @@ withDocumentM cfg f doc = do
       pre = S.getPreamble latex
       Just body = S.getBody latex
       mp = mustProcess cfg
+  pre' <- f pre
   body' <- f body 
-  return $ render (pre <> document body')
+  return $ render (pre' <> document body')
 
 
 
@@ -67,7 +68,10 @@ markLaTeX :: Config -> LangPair -> LaTeX -> LaTeX
 markDocument :: Config -> LangPair -> Text -> IO Text
 markLaTeX cfg lpair = S.texmap mp mark where
   mp = mustProcess cfg
-  mark (S.TeXRaw txt) = S.TeXRaw . putSegment $ Translate lpair txt
+  mark t@(S.TeXRaw txt) =
+    if null (T.words txt)
+      then t
+      else S.TeXRaw . putSegment $ Translate lpair txt
   mark latex = latex
 
 markDocument cfg lpair = withDocumentM cfg (return . markLaTeX cfg lpair)
@@ -280,12 +284,14 @@ remaining = do
 
 main :: IO ()
 main = do
-  let dir = "/Users/saludes/Desktop/AgustíR/HistoriaGeoDiff/"
-      srcFile = "hgd_caen_utf8.tex"
-      dstFile = dir ++ srcFile ++ ".marked"
-      user = Just "jordi.saludes@upc.edu"
+  let dir = "test/samples/"
+      srcFile = "cat1.tex"
+      dstFile = dir ++ srcFile ++ ".final"
+      user = Nothing 
       mt = makeMT user
+      tolang l = ("ca", l)
   cfg <- getConfig Nothing
   doc <- TIO.readFile $ dir ++ srcFile
-  doc' <- translateLaTeXDoc cfg mt doc
+  doc'  <- markDocument cfg (tolang "eo") doc 
+  -- doc'' <- translateLaTeXDoc cfg mt doc'
   TIO.writeFile dstFile doc'
