@@ -12,12 +12,12 @@ import System.Console.GetOpt
       OptDescr(..) )
 import Service
 import Data.Maybe (fromMaybe)
-import System.Environment (lookupEnv, getArgs)
+import System.Environment (lookupEnv, getArgs, getProgName)
 import System.FilePath.Posix (splitExtension, (<.>))
 import Data.Char (isSpace)
 
   
-data Action = Remaining | Mark LangPair | Translate
+data Action = Remaining | Mark LangPair | Translate | Help
 data Options = Options 
   { optAction :: Action
   , optUser :: Maybe String
@@ -33,7 +33,11 @@ defaultOptions = Options
 
 options :: [OptDescr (Options -> IO Options)]
 options =
-  [ Option ['u'] ["user"]
+  [ Option ['h'] ["help"]
+      (NoArg (\ops -> return ops {optAction = Help}))
+      "Show help"
+    
+  , Option ['u'] ["user"]
       (OptArg (\mu ops -> 
         case mu of
           Just u  -> return $ ops { optUser = Just u }
@@ -102,13 +106,6 @@ markFile lp in_path =
 
 markLaTeXFile :: LangPair -> FilePath -> FilePath -> IO ()
 markLaTeXFile lp inPath outPath = do
-  {-contents <- readFile inPath
-  cfg <- getConfig Nothing
-  contents' <- markDocument cfg lp contents
-  -- let contents' = markLaTeX cfg lp contents
-  writeFile outPath $ decodeHTML contents'
-  putStrLn $ "Marked into " ++ outPath
--}
   contents <- IOT.readFile inPath
   cfg <- getConfig Nothing
   marked <- markDocument cfg lp contents
@@ -116,17 +113,18 @@ markLaTeXFile lp inPath outPath = do
   putStrLn $ "Marked into " ++ outPath
 
 
-
-
--- latexMark = markLaTeXFile
 main :: IO ()
 main = do
-  args  <- getArgs 
-  let (actions, nonOptions, errors) =  getOpt RequireOrder options args
+  args  <- getArgs
+  pname <- getProgName 
+  let header =  "Usage: " ++ pname ++ " [-uUSER] [-rt][-m SRC:DEST] files..."
+      (actions, nonOptions, errors) =  getOpt RequireOrder options args
   if null errors
     then do
       opts <- foldl (>>=) (return defaultOptions) actions
       case optAction opts of
+        Help -> do
+          putStrLn (usageInfo header options)
         Translate -> do
             muser <- maybe getUser (return . Just) (optUser opts)
             let mt =  makeMT muser
@@ -137,5 +135,4 @@ main = do
         Remaining -> mapM_ computeRemaining nonOptions
         Mark lp -> mapM_ (markFile lp) nonOptions
     else ioError (userError $ concat errors ++ usageInfo header options)
-  where header = "Usage: ? [-uUSER] [-rt][-m SRC:DEST] files..."
   

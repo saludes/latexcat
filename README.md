@@ -93,12 +93,14 @@ Per tal de donar aquesta adreça podem:
 Al directori **test/samples** hi ha un fitxer en català que volem traduir a l'anglès. Fem:
 
 1. Marcatge:
-
+```
     hatexmt-exe -m ca:en test/samples/cat1.tex
+```
 
 2. Traducció
-
+```
     hatexmt-exe -t test/samples/cat1.marked.tex
+```
 
 3. El text traduït es trobarà a **test/samples/cat1.marked.trans.tex**
 
