@@ -1,7 +1,7 @@
 # Traducció automàtica de documents LaTeX
 
 Aquest document descriu com instal·lar i usar una eina de línia de comanda que permet traduïr
-petits fitxers LaTeX.
+petits fitxers LaTeX.[^1][^2]
 L'eina s'ha provat en el sistema operatiu OSX 13.0.1
 
 
@@ -114,6 +114,10 @@ Cal tenir en compte que la interpretació de les dues seccions és oposada. És 
 * Allò que és llistat sota `commands:` **és** marcat per a traducció
 
 * Allò que és llistat sota `environments:` **no és** marcat per a traducció
+
+
+[^1]: Amb el suport parcial del projecte **Matemàtiques en Català 2022** de la _Secció de Ciències i Tecnologia_ de [l'Institut d'Estudis Catalans](https://www.iec.cat/).
+[^2]: **Signat**: Jordi Saludes Closa, el 18 de Desembre de 2022.
 
 
 
